@@ -8,7 +8,7 @@ La instalación objetivo del proyecto se basa en **Zabbix 7.4**, con **MariaDB/M
 
 La guía paso a paso de ejecución se ha documentado en:
 
-- [guia-instalacion-zabbix-paso-a-paso.txt](/mnt/c/Users/G513/OneDrive%20-%20Sa%20Palomera/Documentos/Codex/Zabbix/Monitorizacion-Redes/docs/guia-instalacion-zabbix-paso-a-paso.txt)
+- [guia-instalacion-zabbix-paso-a-paso.md](/mnt/c/Users/G513/OneDrive%20-%20Sa%20Palomera/Documentos/Codex/Zabbix/Monitorizacion-Redes/docs/guia-instalacion-zabbix-paso-a-paso.md)
 
 ## Resultado esperado
 
