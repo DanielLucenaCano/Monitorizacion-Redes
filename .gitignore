@@ -1,0 +1,14 @@
+logs/*
+!logs/.gitkeep
+
+docs/evidencias/*.png
+docs/evidencias/*.jpg
+docs/evidencias/*.jpeg
+docs/evidencias/*.webp
+docs/evidencias/*.log
+docs/evidencias/*.txt
+docs/evidencias/*.csv
+
+*.swp
+*.tmp
+*.bak
