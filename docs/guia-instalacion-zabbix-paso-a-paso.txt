@@ -1,0 +1,381 @@
+GUIA PASO A PASO - INSTALACION Y CONFIGURACION DE ZABBIX EN MAQUINA VIRTUAL
+===========================================================================
+
+OBJETIVO
+--------
+Desplegar Zabbix Server, frontend web y agente local en una maquina virtual
+Ubuntu Server 24.04 LTS, con MariaDB y Apache, dejando la plataforma lista
+para empezar a monitorizar.
+
+ALCANCE
+-------
+- Sistema operativo de referencia: Ubuntu Server 24.04 LTS.
+- Herramienta: Zabbix 7.4.
+- Base de datos: MariaDB.
+- Servidor web: Apache.
+- Agente: zabbix-agent.
+
+NOTA OPERATIVA
+--------------
+Si la VM usa Debian 12 en lugar de Ubuntu 24.04, el flujo es el mismo, pero
+debes sustituir el paquete del repositorio oficial de Ubuntu por el paquete
+equivalente de Debian en la web oficial de Zabbix.
+
+
+FASE 0 - DATOS QUE DEBES DEFINIR ANTES DE EMPEZAR
+-------------------------------------------------
+Define estos valores y utilízalos de forma consistente:
+
+- IP_VM=IP de la maquina virtual
+- DB_NAME=zabbix
+- DB_USER=zabbix
+- DB_PASS=ClaveSeguraZabbixDB
+- ZBX_HOSTNAME=zabbix-server
+
+Ejemplo:
+
+IP_VM=192.168.56.20
+DB_NAME=zabbix
+DB_USER=zabbix
+DB_PASS=ZabbixDB2026!
+ZBX_HOSTNAME=zabbix-server
+
+
+FASE 1 - PREPARAR EL SISTEMA
+----------------------------
+1. Actualiza el sistema.
+
+sudo apt update
+sudo apt upgrade -y
+
+2. Instala dependencias base.
+
+sudo apt install -y wget curl gnupg lsb-release ca-certificates software-properties-common
+
+3. Verifica la IP de la VM.
+
+ip a
+
+4. Opcional pero recomendable: fija el nombre del equipo.
+
+sudo hostnamectl set-hostname zabbix-server
+
+5. Valida resolución local.
+
+hostnamectl
+cat /etc/hosts
+
+EVIDENCIAS A CAPTURAR
+- Salida de "hostnamectl"
+- Salida de "ip a"
+
+
+FASE 2 - INSTALAR MARIADB Y APACHE
+----------------------------------
+1. Instala la base de datos y el servidor web.
+
+sudo apt install -y mariadb-server apache2
+
+2. Arranca y habilita ambos servicios.
+
+sudo systemctl enable --now mariadb apache2
+
+3. Verifica estado.
+
+sudo systemctl status mariadb --no-pager
+sudo systemctl status apache2 --no-pager
+
+4. Endurece MariaDB.
+
+sudo mysql_secure_installation
+
+Recomendacion de respuesta:
+- Set root password: segun criterio del laboratorio
+- Remove anonymous users: Y
+- Disallow root login remotely: Y
+- Remove test database: Y
+- Reload privilege tables: Y
+
+EVIDENCIAS A CAPTURAR
+- Salida de estado de mariadb
+- Salida de estado de apache2
+
+
+FASE 3 - CONFIGURAR EL REPOSITORIO OFICIAL DE ZABBIX
+----------------------------------------------------
+1. Descarga el paquete del repositorio oficial para Ubuntu 24.04.
+
+wget https://repo.zabbix.com/zabbix/7.4/release/ubuntu/pool/main/z/zabbix-release/zabbix-release_latest_7.4+ubuntu24.04_all.deb
+
+2. Instala el paquete.
+
+sudo dpkg -i zabbix-release_latest_7.4+ubuntu24.04_all.deb
+
+3. Actualiza el indice de paquetes.
+
+sudo apt update
+
+4. Comprueba que el repositorio ha quedado operativo.
+
+apt policy | grep -i zabbix -A 3
+
+EVIDENCIAS A CAPTURAR
+- Salida de "apt policy | grep -i zabbix -A 3"
+
+
+FASE 4 - INSTALAR ZABBIX SERVER, FRONTEND Y AGENTE
+--------------------------------------------------
+1. Instala los paquetes principales.
+
+sudo apt install -y zabbix-server-mysql zabbix-frontend-php zabbix-apache-conf zabbix-sql-scripts zabbix-agent
+
+2. Verifica que los paquetes estan presentes.
+
+dpkg -l | grep -E 'zabbix-server|zabbix-frontend|zabbix-apache-conf|zabbix-sql-scripts|zabbix-agent'
+
+EVIDENCIAS A CAPTURAR
+- Salida de "dpkg -l | grep zabbix"
+
+
+FASE 5 - CREAR LA BASE DE DATOS DE ZABBIX
+-----------------------------------------
+1. Entra en MariaDB como root.
+
+sudo mysql
+
+2. Ejecuta estas sentencias SQL.
+
+create database zabbix character set utf8mb4 collate utf8mb4_bin;
+create user 'zabbix'@'localhost' identified by 'ClaveSeguraZabbixDB';
+grant all privileges on zabbix.* to 'zabbix'@'localhost';
+set global log_bin_trust_function_creators = 1;
+flush privileges;
+quit;
+
+IMPORTANTE
+----------
+Sustituye 'ClaveSeguraZabbixDB' por el valor real definido en DB_PASS.
+
+3. Importa el esquema inicial de Zabbix.
+
+zcat /usr/share/zabbix-sql-scripts/mysql/server.sql.gz | mysql --default-character-set=utf8mb4 -uzabbix -p zabbix
+
+4. Vuelve a desactivar el ajuste temporal de funciones si el laboratorio no
+   lo necesita de forma permanente.
+
+sudo mysql -e "set global log_bin_trust_function_creators = 0;"
+
+5. Valida que la base de datos contiene tablas.
+
+mysql -uzabbix -p -e "use zabbix; show tables;" | head
+
+EVIDENCIAS A CAPTURAR
+- Salida del comando de importacion
+- Salida de "show tables"
+
+
+FASE 6 - CONFIGURAR ZABBIX SERVER
+---------------------------------
+1. Edita el fichero del servidor.
+
+sudo nano /etc/zabbix/zabbix_server.conf
+
+2. Localiza y ajusta, como minimo, estos parametros:
+
+DBName=zabbix
+DBUser=zabbix
+DBPassword=ClaveSeguraZabbixDB
+
+3. Guarda cambios.
+
+4. Valida que el password ha quedado configurado.
+
+grep -E '^(DBName|DBUser|DBPassword)=' /etc/zabbix/zabbix_server.conf
+
+EVIDENCIAS A CAPTURAR
+- Salida del grep de parametros DB
+
+
+FASE 7 - AJUSTAR PHP Y APACHE
+-----------------------------
+1. Revisa la configuracion PHP del frontend de Zabbix.
+
+sudo nano /etc/zabbix/apache.conf
+
+2. Verifica, como minimo, la zona horaria.
+
+php_value date.timezone Europe/Madrid
+
+3. Reinicia Apache para aplicar cambios.
+
+sudo systemctl restart apache2
+
+4. Verifica sintaxis y estado.
+
+sudo apache2ctl configtest
+sudo systemctl status apache2 --no-pager
+
+EVIDENCIAS A CAPTURAR
+- Salida de "apache2ctl configtest"
+- Salida de estado de apache2
+
+
+FASE 8 - ARRANCAR Y HABILITAR LOS SERVICIOS DE ZABBIX
+-----------------------------------------------------
+1. Habilita y arranca Zabbix Server, agente y Apache.
+
+sudo systemctl enable --now zabbix-server zabbix-agent apache2
+
+2. Verifica estado de los tres servicios.
+
+sudo systemctl status zabbix-server --no-pager
+sudo systemctl status zabbix-agent --no-pager
+sudo systemctl status apache2 --no-pager
+
+3. Verifica puertos publicados.
+
+ss -lntp | grep -E '10051|80'
+
+4. Si hay fallo en zabbix-server, revisa el log.
+
+sudo tail -n 50 /var/log/zabbix/zabbix_server.log
+
+EVIDENCIAS A CAPTURAR
+- Estado de zabbix-server
+- Estado de zabbix-agent
+- Estado de apache2
+- Salida de "ss -lntp"
+
+
+FASE 9 - ACCESO WEB Y ASISTENTE INICIAL
+---------------------------------------
+1. Abre en navegador:
+
+http://IP_DE_LA_VM/zabbix
+
+2. En el asistente inicial:
+
+- Comprueba prerequisitos PHP
+- Configura la conexion a base de datos:
+  - Database type: MySQL
+  - Database host: localhost
+  - Database port: 0 o 3306
+  - Database name: zabbix
+  - User: zabbix
+  - Password: ClaveSeguraZabbixDB
+- Configura Zabbix server:
+  - Host: localhost
+  - Port: 10051
+  - Name: Zabbix Lab
+
+3. Finaliza el asistente.
+
+4. Inicia sesion con credenciales por defecto:
+
+Usuario: Admin
+Password: zabbix
+
+5. Cambia la password del usuario Admin inmediatamente.
+
+EVIDENCIAS A CAPTURAR
+- Captura del asistente
+- Captura del dashboard inicial
+- Evidencia del cambio de password
+
+
+FASE 10 - CONFIGURACION BASICA POST-INSTALACION
+-----------------------------------------------
+1. Renombra el host local si es necesario desde la interfaz.
+
+Ruta recomendada:
+Data collection -> Hosts
+
+2. Comprueba que el host "Zabbix server" aparece habilitado.
+
+3. Verifica que el agente local reporta metricas.
+
+Ruta recomendada:
+Monitoring -> Latest data
+
+4. Comprueba disponibilidad del servicio:
+
+sudo systemctl is-active zabbix-server
+sudo systemctl is-active zabbix-agent
+
+5. Ejecuta una validacion minima de logs.
+
+sudo tail -n 30 /var/log/zabbix/zabbix_server.log
+sudo tail -n 30 /var/log/zabbix/zabbix_agentd.log
+
+EVIDENCIAS A CAPTURAR
+- Captura de "Latest data"
+- Logs finales sin errores criticos
+
+
+FASE 11 - VALIDACION MINIMA DE LA INSTALACION
+---------------------------------------------
+La instalacion debe considerarse correcta solo si se cumple todo lo siguiente:
+
+- MariaDB activo
+- Apache activo
+- zabbix-server activo
+- zabbix-agent activo
+- Puerto 80 en escucha
+- Puerto 10051 en escucha
+- Frontend accesible por navegador
+- Login funcional con usuario Admin
+- Host local visible en Zabbix
+
+
+BLOQUE DE COMANDOS CONSOLIDADO
+------------------------------
+Este bloque resume la instalacion completa para una VM Ubuntu 24.04:
+
+sudo apt update && sudo apt upgrade -y
+sudo apt install -y wget curl gnupg lsb-release ca-certificates software-properties-common
+sudo apt install -y mariadb-server apache2
+sudo systemctl enable --now mariadb apache2
+wget https://repo.zabbix.com/zabbix/7.4/release/ubuntu/pool/main/z/zabbix-release/zabbix-release_latest_7.4+ubuntu24.04_all.deb
+sudo dpkg -i zabbix-release_latest_7.4+ubuntu24.04_all.deb
+sudo apt update
+sudo apt install -y zabbix-server-mysql zabbix-frontend-php zabbix-apache-conf zabbix-sql-scripts zabbix-agent
+sudo mysql -e "create database zabbix character set utf8mb4 collate utf8mb4_bin;"
+sudo mysql -e "create user 'zabbix'@'localhost' identified by 'ClaveSeguraZabbixDB';"
+sudo mysql -e "grant all privileges on zabbix.* to 'zabbix'@'localhost';"
+sudo mysql -e "set global log_bin_trust_function_creators = 1;"
+sudo mysql -e "flush privileges;"
+zcat /usr/share/zabbix-sql-scripts/mysql/server.sql.gz | mysql --default-character-set=utf8mb4 -uzabbix -p zabbix
+sudo mysql -e "set global log_bin_trust_function_creators = 0;"
+sudo sed -i 's/^# DBPassword=/DBPassword=ClaveSeguraZabbixDB/' /etc/zabbix/zabbix_server.conf
+sudo sed -i 's#php_value date.timezone Europe/Riga#php_value date.timezone Europe/Madrid#' /etc/zabbix/apache.conf
+sudo systemctl restart apache2
+sudo systemctl enable --now zabbix-server zabbix-agent apache2
+
+
+INCIDENCIAS FRECUENTES
+----------------------
+1. Error: "Unable to locate package zabbix-apache-conf" o "zabbix-sql-scripts".
+   Causa habitual: repositorio oficial mal instalado o paquete de otra version
+   de Ubuntu/Debian.
+   Accion: revisa el fichero .deb descargado y repite "sudo apt update".
+
+2. Error: "server.sql.gz: No such file or directory".
+   Causa habitual: no se instalo el paquete zabbix-sql-scripts.
+   Accion: ejecuta de nuevo:
+   sudo apt install -y zabbix-sql-scripts
+
+3. Error de acceso a la base de datos desde Zabbix server.
+   Causa habitual: password incorrecto en /etc/zabbix/zabbix_server.conf.
+   Accion: corrige DBPassword y reinicia:
+   sudo systemctl restart zabbix-server
+
+4. La web carga pero el asistente falla en prerequisitos PHP.
+   Causa habitual: timezone o modulos PHP no alineados.
+   Accion: revisa /etc/zabbix/apache.conf y reinicia Apache.
+
+
+RESULTADO FINAL ESPERADO
+------------------------
+La VM debe exponer el frontend web de Zabbix, con backend funcional, agente
+local activo y base de datos inicializada, de modo que en la siguiente fase
+se puedan registrar hosts adicionales, definir triggers y construir dashboards.
